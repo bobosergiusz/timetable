@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 import pytest
 
 
-from timetable.model.appointment import Appointment
+from timetable.domain.appointment import Appointment
 
 
 def test_can_create_when_lower_limit_less_than_upper():

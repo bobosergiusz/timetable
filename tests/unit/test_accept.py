@@ -3,8 +3,8 @@ from datetime import datetime, timedelta
 import pytest
 
 
-from timetable.model.accept import accept, NotAvailableError
-from timetable.model.appointment import Appointment
+from timetable.domain.accept import accept, NotAvailableError
+from timetable.domain.appointment import Appointment
 
 
 def test_can_accept_if_no_appoinment_at_the_time():
