@@ -1,12 +1,20 @@
 from datetime import datetime, timedelta
+from typing import Optional
 
 
 class Appointment:
-    def __init__(self, since: datetime, until: datetime, accepted: bool):
+    def __init__(
+        self,
+        since: datetime,
+        until: datetime,
+        accepted: bool,
+        id: Optional[int] = None,
+    ):
         if (until - since) <= timedelta():
             raise ValueError(
                 f"since cannot be after until ({since} > {until})"
             )
+        self.id = id
         self.since = since
         self.until = until
         self.accepted = accepted
