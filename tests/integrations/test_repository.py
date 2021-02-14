@@ -5,6 +5,8 @@ import pytest
 from timetable.adapters.repository import DoesNotExistsError, SqlRepository
 from timetable.domain.appointment import Appointment
 
+from tests.utils import insert_appointment
+
 
 def test_repository_can_add(Session):
     session = Session()
@@ -25,19 +27,11 @@ def test_repository_can_add(Session):
     assert accepted_retrieved == a.accepted
 
 
-def insert(session, since: datetime, until: datetime, accepted: bool) -> None:
-    session.execute(
-        "INSERT INTO appointments (since, until, accepted) "
-        "VALUES (:since, :until, :accepted)",
-        {"since": since, "until": until, "accepted": accepted},
-    )
-
-
 def test_repository_can_get_by_existing_id(Session):
     session = Session()
     since = datetime(2000, 1, 1, 1)
     until = datetime(2000, 1, 1, 2)
-    insert(session, since, until, True)
+    insert_appointment(session, since, until, True)
     [[id_]] = session.execute("SELECT id FROM appointments")
     repository = SqlRepository(session)
     a = repository.get(id_)
@@ -58,10 +52,10 @@ def test_repository_can_list(Session):
     session = Session()
     since1 = datetime(2000, 1, 1, 1)
     until1 = datetime(2000, 1, 1, 2)
-    insert(session, since1, until1, True)
+    insert_appointment(session, since1, until1, True)
     since2 = datetime(2000, 1, 2, 1)
     until2 = datetime(2000, 1, 2, 2)
-    insert(session, since2, until2, False)
+    insert_appointment(session, since2, until2, False)
     [[id1], [id2]] = session.execute("SELECT id FROM appointments")
     repository = SqlRepository(session)
     a1 = repository.get(id1)
