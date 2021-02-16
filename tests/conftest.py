@@ -1,6 +1,6 @@
 from pytest import fixture
 from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import sessionmaker, clear_mappers
 
 from timetable.adapters.orm import metadata, start_mappers
 
@@ -11,4 +11,5 @@ def Session():
     Session = sessionmaker(bind=engine)
     metadata.create_all(engine)
     start_mappers()
-    return Session
+    yield Session
+    clear_mappers()

@@ -9,3 +9,4 @@ def insert_appointment(
         "VALUES (:since, :until, :accepted)",
         {"since": since, "until": until, "accepted": accepted},
     )
+    session.commit()
