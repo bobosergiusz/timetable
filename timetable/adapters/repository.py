@@ -17,7 +17,7 @@ class SqlRepository:
         return app
 
     def list(self) -> List[Appointment]:
-        return self.session.query(Appointment).list()
+        return self.session.query(Appointment).all()
 
     def add(self, app: Appointment) -> None:
         self.session.add(app)

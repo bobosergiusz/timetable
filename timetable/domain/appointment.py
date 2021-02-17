@@ -1,5 +1,5 @@
 from datetime import datetime, timedelta
-from typing import Optional
+from typing import Any, Dict, Optional
 
 
 class Appointment:
@@ -28,3 +28,11 @@ class Appointment:
 
     def __repr__(self) -> str:
         return f"Appointment({self.since}, {self.until})"
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "id": self.id,
+            "since": self.since,
+            "until": self.until,
+            "accepted": self.accepted,
+        }

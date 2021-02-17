@@ -1,0 +1,5 @@
+.mypy_cache
+.pytest_cache
+.vscode
+tests
+e2e_tests

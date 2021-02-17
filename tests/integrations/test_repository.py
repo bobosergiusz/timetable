@@ -56,10 +56,8 @@ def test_repository_can_list(Session):
     since2 = datetime(2000, 1, 2, 1)
     until2 = datetime(2000, 1, 2, 2)
     insert_appointment(session, since2, until2, False)
-    [[id1], [id2]] = session.execute("SELECT id FROM appointments")
     repository = SqlRepository(session)
-    a1 = repository.get(id1)
-    a2 = repository.get(id2)
+    [a1, a2] = repository.list()
 
     assert a1.since == since1
     assert a1.until == until1
