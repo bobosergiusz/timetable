@@ -110,3 +110,80 @@ def test_appointments_put_unhappy():
     requests.put(f"{api_url}/appointment/{id1}", json=json)
     resp = requests.put(f"{api_url}/appointment/{id2}", json=json)
     assert resp.status_code == 400
+
+
+def test_create_user_happy():
+    api_url = get_api_url()
+    account_name = "bob"
+    password = "123"
+    email = "bob@dot.com"
+    account_type = "client"
+    json = {
+        "account_name": account_name,
+        "password": password,
+        "email": email,
+        "account_type": account_type,
+    }
+    resp = requests.post(f"{api_url}/user", json=json)
+    assert resp.status_code == 201
+    u = resp.json()
+    assert u["account_name"] == account_name
+    assert u["password"] == password
+    assert u["email"] == email
+
+
+def test_create_user_unhappy():
+    api_url = get_api_url()
+    account_name = "john"
+    password = "123"
+    email = "bob@dot.com"
+    account_type = "client"
+    json = {
+        "account_name": account_name,
+        "password": password,
+        "email": email,
+        "account_type": account_type,
+    }
+    requests.post(f"{api_url}/user", json=json)
+    resp = requests.post(f"{api_url}/user", json=json)
+    assert resp.status_code == 400
+
+
+def test_login_user_happy():
+    api_url = get_api_url()
+    account_name = "katie"
+    password = "123"
+    email = "bob@dot.com"
+    account_type = "client"
+    json = {
+        "account_name": account_name,
+        "password": password,
+        "email": email,
+        "account_type": account_type,
+    }
+    requests.post(f"{api_url}/user", json=json)
+    json = {"account_name": account_name, "password": password}
+    resp1 = requests.post(f"{api_url}/login", json=json)
+    access_token = resp1.json()["access_token"]
+    headers = {"Authorization": f"Bearer {access_token}"}
+    resp2 = requests.get(f"{api_url}/protected", headers=headers)
+    assert resp2.status_code == 200
+    assert resp2.json() == {"msg": f"You are user: {account_name}"}
+
+
+def test_login_user_unhappy():
+    api_url = get_api_url()
+    account_name = "joe"
+    password = "123"
+    email = "bob@dot.com"
+    account_type = "client"
+    json = {
+        "account_name": account_name,
+        "password": password,
+        "email": email,
+        "account_type": account_type,
+    }
+    requests.post(f"{api_url}/user", json=json)
+    json = {"account_name": account_name, "password": 456}
+    resp = requests.post(f"{api_url}/login", json=json)
+    assert resp.status_code == 400

@@ -13,5 +13,6 @@
     "python.formatting.blackArgs": [
         "--line-length",
         "79"
-    ]
+    ],
+    "python.pythonPath": "/home/sergiusz/.cache/pypoetry/virtualenvs/timetable-g2kEoB-Q-py3.8/bin/python"
 }

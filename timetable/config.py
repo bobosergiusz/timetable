@@ -8,3 +8,7 @@ def get_database_uri():
     port = os.environ.get("PG_PORT")
     database = os.environ.get("PG_DATABASE")
     return f"postgresql+psycopg2://{user}:{password}@{host}:{port}/{database}"
+
+
+def get_secret_key():
+    return os.urandom(16)

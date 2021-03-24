@@ -8,7 +8,9 @@ from timetable.domain.accept import (
     NotAvailableError,
 )
 from timetable.domain.appointment import Appointment
+from timetable.domain.user import Client, Service
 from timetable.service_layer.unit_of_work import SqlUnitOfWork
+from timetable.adapters.repository import DoesNotExistsError
 
 
 def accept_appointment(id: int, uow: SqlUnitOfWork) -> Dict[str, Any]:
@@ -42,3 +44,43 @@ def list_appointments(uow: SqlUnitOfWork) -> List[Dict[str, Any]]:
     with uow:
         list_apps = uow.appointments.list()
         return [app.to_dict() for app in list_apps]
+
+
+def create_client(
+    account_name: str, email: str, password: str, uow: SqlUnitOfWork
+) -> Dict[str, Any]:
+    with uow:
+        try:
+            uow.users.get(account_name)
+        except DoesNotExistsError:
+            u = Client(account_name, email, password)
+            uow.users.add(u)
+            uow.commit()
+            return u.to_dict()
+        else:
+            raise NotAvailableError
+
+
+def create_service(
+    account_name: str,
+    email: str,
+    password: str,
+    tags: List[str],
+    uow: SqlUnitOfWork,
+) -> Dict[str, Any]:
+    with uow:
+        try:
+            uow.users.get(account_name)
+        except DoesNotExistsError:
+            u = Service(account_name, email, password, tags)
+            uow.users.add(u)
+            uow.commit()
+            return u.to_dict()
+        else:
+            raise NotAvailableError
+
+
+def get_user(account_name: str, uow) -> Dict[str, Any]:
+    with uow:
+        u = uow.users.get(account_name)
+        return u.to_dict()

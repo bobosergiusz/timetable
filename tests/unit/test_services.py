@@ -7,6 +7,9 @@ from timetable.service_layer.services import (
     accept_appointment,
     ask_appointment,
     list_appointments,
+    create_client,
+    create_service,
+    get_user,
 )
 
 
@@ -29,10 +32,33 @@ class FakeRepository:
         self.apps.append(app)
 
 
+class FakeUsersRepository:
+    def __init__(self, users):
+        self.users = users
+
+    def get(self, id):
+        user = next((u for u in self.users if u.account_name == id), None)
+        if user is None:
+            raise DoesNotExistsError
+        return user
+
+    def list(self):
+        return self.users
+
+    def add(self, user):
+        user_saved = next(
+            (u for u in self.users if u.account_name == id), None
+        )
+        if user_saved is not None:
+            self.users.remove(user_saved)
+        self.users.append(user)
+
+
 class FakeUnitOfWork:
     def __init__(self):
         self.commited = False
         self.appointments = FakeRepository([])
+        self.users = FakeUsersRepository([])
 
     def __enter__(self):
         return self
@@ -144,4 +170,93 @@ def test_list_returns_all():
     [app1_returned, app2_returned] = list_appointments(uow)
     assert app1_returned == app1
     assert app2_returned == app2_accepted
+    assert not uow.commited
+
+
+def test_create_client():
+    uow = FakeUnitOfWork()
+    account_name = "bob"
+    email = "bob@dot.com"
+    password = "123"
+    u = create_client(account_name, email, password, uow)
+    assert u["account_name"] == account_name
+    assert u["email"] == email
+    assert u["password"] == password
+    assert uow.commited
+    user_stored = uow.users.list().pop().to_dict()
+    assert user_stored["account_name"] == account_name
+    assert user_stored["email"] == email
+    assert user_stored["password"] == password
+
+
+def test_cannot_create_client_with_existing_account_name():
+    uow = FakeUnitOfWork()
+    account_name = "bob"
+    email = "bob@dot.com"
+    password = "123"
+    create_client(account_name, email, password, uow)
+    uow.commited = False
+    with pytest.raises(NotAvailableError):
+        create_client(account_name, email, password, uow)
+    assert not uow.commited
+
+
+def test_create_service():
+    uow = FakeUnitOfWork()
+    account_name = "bob"
+    email = "bob@dot.com"
+    password = "123"
+    tags = ["warsaw", "mechanic"]
+    u = create_service(account_name, email, password, tags, uow)
+    assert u["account_name"] == account_name
+    assert u["email"] == email
+    assert u["password"] == password
+    assert u["tags"] == tags
+    assert uow.commited
+    user_stored = uow.users.list().pop().to_dict()
+    assert user_stored["account_name"] == account_name
+    assert user_stored["email"] == email
+    assert user_stored["password"] == password
+    assert user_stored["tags"] == tags
+
+
+def test_cannot_create_user_with_existing_account_name():
+    uow = FakeUnitOfWork()
+    account_name = "bob"
+    email = "bob@dot.com"
+    password = "123"
+    tags = ["warsaw", "mechanic"]
+    create_service(account_name, email, password, tags, uow)
+    uow.commited = False
+    with pytest.raises(NotAvailableError):
+        create_service(account_name, email, password, tags, uow)
+    assert not uow.commited
+
+
+def test_get_existing_user():
+    uow = FakeUnitOfWork()
+    account_name = "bob"
+    email = "bob@dot.com"
+    password = "123"
+    tags = ["warsaw", "mechanic"]
+    create_service(account_name, email, password, tags, uow)
+    uow.commited = False
+    u = get_user(account_name, uow)
+    assert u["account_name"] == account_name
+    assert u["email"] == email
+    assert u["password"] == password
+    assert u["tags"] == tags
+    assert not uow.commited
+
+
+def test_cannot_get_unexisting_user():
+    uow = FakeUnitOfWork()
+    account_name = "bob"
+    email = "bob@dot.com"
+    password = "123"
+    tags = ["warsaw", "mechanic"]
+    create_service(account_name, email, password, tags, uow)
+    uow.commited = False
+    with pytest.raises(DoesNotExistsError):
+        get_user("john", uow)
     assert not uow.commited

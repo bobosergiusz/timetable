@@ -16,3 +16,8 @@ This will be awesome app for schedulling appointments with specialists and allow
 - As a client I want to be able to ask for an appointment
 - As a specialist I want to be able to accept an appointment
 - As a specialist I want to see all appointment
+
+
+
+## TODO:
+- create secret key for flask and JWT

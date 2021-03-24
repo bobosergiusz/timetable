@@ -3,6 +3,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, clear_mappers
 
 from timetable.adapters.orm import metadata, start_mappers
+from timetable.domain.user import Service
 
 
 @fixture
@@ -13,3 +14,4 @@ def Session():
     start_mappers()
     yield Session
     clear_mappers()
+    del Service.tags

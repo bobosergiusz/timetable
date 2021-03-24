@@ -112,7 +112,6 @@ def test_uow_rolls_back_uncommited_appointments_modification(Session):
     appointments_pre = list(
         session.execute("SELECT since, until, accepted FROM appointments")
     )
-    print(appointments_pre)
 
     uow = SqlUnitOfWork(Session)
     with uow:
@@ -126,7 +125,6 @@ def test_uow_rolls_back_uncommited_appointments_modification(Session):
     appointments_post = list(
         session.execute("SELECT since, until, accepted FROM appointments")
     )
-    print(appointments_post)
     assert appointments_pre == appointments_post
 
 
