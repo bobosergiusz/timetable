@@ -29,4 +29,4 @@ class Service(User):
     tags: List[str]
 
     def to_dict(self) -> Dict[str, Any]:
-        return dict(super().to_dict(), **{"tags": self.tags})
+        return dict(super().to_dict(), **{"tags": [t for t in self.tags]})

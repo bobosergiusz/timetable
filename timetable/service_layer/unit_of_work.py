@@ -1,4 +1,7 @@
-from timetable.adapters.repository import SqlRepository, SqlUserRepository
+from timetable.adapters.repository import (
+    SqlCalendarRepository,
+    SqlUserRepository,
+)
 
 
 class SqlUnitOfWork:
@@ -7,7 +10,7 @@ class SqlUnitOfWork:
 
     def __enter__(self):
         self.session = self.session_factory()
-        self.appointments = SqlRepository(self.session)
+        self.calendars = SqlCalendarRepository(self.session)
         self.users = SqlUserRepository(self.session)
         return self
 

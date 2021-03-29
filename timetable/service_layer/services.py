@@ -1,49 +1,54 @@
 from datetime import datetime
 from typing import Any, Dict, List
 
-from timetable.domain.accept import (
-    accept,
-    build_exc_msg,
-    find_colliding,
-    NotAvailableError,
-)
-from timetable.domain.appointment import Appointment
+from timetable.domain.calendar import Calendar
+from timetable.domain.exceptions import DoesNotExistsError, NotAvailableError
 from timetable.domain.user import Client, Service
 from timetable.service_layer.unit_of_work import SqlUnitOfWork
-from timetable.adapters.repository import DoesNotExistsError
 
 
-def accept_appointment(id: int, uow: SqlUnitOfWork) -> Dict[str, Any]:
+def accept_appointment(
+    to_user: str, id: int, uow: SqlUnitOfWork
+) -> Dict[str, Any]:
     with uow:
-        app = uow.appointments.get(id)
-        others = uow.appointments.list()
-        accept(app, others)
+        c = uow.calendars.get(to_user)
+        app = c.get_appointment(id)
+        app = c.accept_appointment(app)
         uow.commit()
         return app.to_dict()
 
 
-def ask_appointment(
-    since: datetime, until: datetime, uow: SqlUnitOfWork
+def create_appointment(
+    to_user: str,
+    from_user: str,
+    since: datetime,
+    until: datetime,
+    description: str,
+    uow: SqlUnitOfWork,
 ) -> Dict[str, Any]:
-    app = Appointment(since=since, until=until, accepted=False)
     with uow:
-        others = uow.appointments.list()
-        colliding = find_colliding(app, others)
-        try:
-            n = next(colliding)
-        except StopIteration:
-            uow.appointments.add(app)
-            uow.commit()
-            return app.to_dict()
-        else:
-            msg = build_exc_msg(app, n, others)
-            raise NotAvailableError(msg)
+        c = uow.calendars.get(to_user)
+        a = c.create_appointment(from_user, since, until, description)
+        uow.commit()
+        return a.to_dict()
 
 
-def list_appointments(uow: SqlUnitOfWork) -> List[Dict[str, Any]]:
+def list_appointments_owned(
+    account_name: str, uow: SqlUnitOfWork
+) -> List[Dict[str, Any]]:
     with uow:
-        list_apps = uow.appointments.list()
-        return [app.to_dict() for app in list_apps]
+        c = uow.calendars.get(account_name)
+        apps = [a.to_dict() for a in c.list_appointments()]
+        return apps
+
+
+def list_appointments_unowned(
+    account_name: str, uow: SqlUnitOfWork
+) -> List[Dict[str, Any]]:
+    with uow:
+        c = uow.calendars.get(account_name)
+        apps = [_mask(a.to_dict()) for a in c.list_appointments()]
+        return apps
 
 
 def create_client(
@@ -74,6 +79,10 @@ def create_service(
         except DoesNotExistsError:
             u = Service(account_name, email, password, tags)
             uow.users.add(u)
+            # FIX commit only once
+            uow.commit()
+            c = Calendar(owner=account_name)
+            uow.calendars.add(c)
             uow.commit()
             return u.to_dict()
         else:
@@ -84,3 +93,33 @@ def get_user(account_name: str, uow) -> Dict[str, Any]:
     with uow:
         u = uow.users.get(account_name)
         return u.to_dict()
+
+
+def search_services(tags: List[str], uow) -> Dict[str, Any]:
+    with uow:
+        us = uow.users.list_services()
+        for t in tags:
+            us = [u for u in us if t in u.tags]
+        us = [_mask_service(u.to_dict()) for u in us]
+        return us
+
+
+def get_appointment(account_name: str, app_id: int, uow) -> Dict[str, Any]:
+    with uow:
+        c = uow.calendars.get(account_name)
+        app = c.get_appointment(app_id)
+        return app.to_dict()
+
+
+def _mask_service(u: Dict[str, Any]) -> Dict[str, Any]:
+    masked = dict()
+    masked["account_name"] = u["account_name"]
+    masked["tags"] = u["tags"]
+    return masked
+
+
+def _mask(app: Dict[str, Any]) -> Dict[str, str]:
+    masked = dict()
+    masked["since"] = app["since"]
+    masked["until"] = app["until"]
+    return masked

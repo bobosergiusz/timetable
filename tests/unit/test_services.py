@@ -1,51 +1,69 @@
 from datetime import datetime
+from typing import List
+from random import randint
+
 import pytest
 
-from timetable.adapters.repository import DoesNotExistsError
-from timetable.domain.accept import NotAvailableError
+from timetable.domain.exceptions import DoesNotExistsError, NotAvailableError
+from timetable.domain.user import User, Service
+from timetable.domain.calendar import Calendar
 from timetable.service_layer.services import (
     accept_appointment,
-    ask_appointment,
-    list_appointments,
+    create_appointment,
+    list_appointments_owned,
+    list_appointments_unowned,
     create_client,
     create_service,
     get_user,
+    search_services,
+    get_appointment,
 )
 
 
-class FakeRepository:
-    def __init__(self, apps):
-        self.apps = apps
+class FakeCalendarRepository:
+    def __init__(self, cals: List[Calendar]):
+        self.cals = cals
 
-    def get(self, id):
-        app = next((a for a in self.apps if a.id == id), None)
-        if app is None:
+    def get(self, owner: str) -> Calendar:
+        cal = next((a for a in self.cals if a.owner == owner), None)
+        if cal is None:
             raise DoesNotExistsError
-        return app
+        return cal
 
-    def list(self):
-        return self.apps
+    def list(self) -> List[Calendar]:
+        return self.cals
 
-    def add(self, app):
-        id = len(self.apps)
-        app.id = id
-        self.apps.append(app)
+    def add(self, cal: Calendar):
+        owner = cal.owner
+        i = next(
+            (i for i, a in enumerate(self.cals) if a.owner == owner), None
+        )
+        if i is None:
+            self.cals.append(cal)
+        else:
+            self.cals[i] = cal
 
 
 class FakeUsersRepository:
-    def __init__(self, users):
+    def __init__(self, users: List[User]):
         self.users = users
 
-    def get(self, id):
-        user = next((u for u in self.users if u.account_name == id), None)
+    def get(self, account_name: str) -> User:
+        user = next(
+            (u for u in self.users if u.account_name == account_name), None
+        )
         if user is None:
             raise DoesNotExistsError
         return user
 
-    def list(self):
+    def list(self) -> List[User]:
         return self.users
 
-    def add(self, user):
+    def list_services(self) -> List[Service]:
+        filtered = [u for u in self.users if isinstance(u, Service)]
+        return filtered
+
+    def add(self, user: User):
         user_saved = next(
             (u for u in self.users if u.account_name == id), None
         )
@@ -57,7 +75,7 @@ class FakeUsersRepository:
 class FakeUnitOfWork:
     def __init__(self):
         self.commited = False
-        self.appointments = FakeRepository([])
+        self.calendars = FakeCalendarRepository([])
         self.users = FakeUsersRepository([])
 
     def __enter__(self):
@@ -71,106 +89,6 @@ class FakeUnitOfWork:
 
     def commit(self):
         self.commited = True
-
-
-def test_ask_appoinment_creates_when_free():
-    since = datetime(2000, 1, 1, 1)
-    until = datetime(2000, 1, 1, 2)
-
-    uow = FakeUnitOfWork()
-    app_returned = ask_appointment(since, until, uow)
-
-    app_stored = uow.appointments.list().pop().to_dict()
-    assert app_returned["since"] == since
-    assert app_returned["until"] == until
-    assert not app_returned["accepted"]
-    assert app_stored["since"] == since
-    assert app_stored["until"] == until
-    assert not app_stored["accepted"]
-    assert uow.commited
-
-
-def test_accept_ok_when_free():
-    uow = FakeUnitOfWork()
-    since = datetime(2000, 1, 1, 1)
-    until = datetime(2000, 1, 1, 2)
-    app_returned_unaccepted = ask_appointment(since, until, uow)
-    id = app_returned_unaccepted["id"]
-
-    uow.commited = False
-    app_returned = accept_appointment(id, uow)
-
-    app_stored = uow.appointments.list().pop().to_dict()
-    assert app_returned["since"] == since
-    assert app_returned["until"] == until
-    assert app_returned["accepted"]
-    assert app_stored["since"] == since
-    assert app_stored["until"] == until
-    assert app_stored["accepted"]
-    assert uow.commited
-
-
-def test_ask_appoinment_cannot_create_when_occupied():
-    uow = FakeUnitOfWork()
-    since1 = datetime(2000, 1, 1, 1)
-    until1 = datetime(2000, 1, 1, 4)
-    app_returned_unaccepted1 = ask_appointment(since1, until1, uow)
-    id = app_returned_unaccepted1["id"]
-    accept_appointment(id, uow)
-
-    since = datetime(2000, 1, 1, 2)
-    until = datetime(2000, 1, 1, 3)
-
-    uow.commited = False
-    with pytest.raises(NotAvailableError):
-        ask_appointment(since, until, uow)
-    assert not uow.commited
-
-
-def test_accept_bad_when_occupied():
-    uow = FakeUnitOfWork()
-    since1 = datetime(2000, 1, 1, 1)
-    until1 = datetime(2000, 1, 1, 4)
-    app_returned_unaccepted1 = ask_appointment(since1, until1, uow)
-    id1 = app_returned_unaccepted1["id"]
-    app_returned_unaccepted2 = ask_appointment(since1, until1, uow)
-    id2 = app_returned_unaccepted2["id"]
-    accept_appointment(id1, uow)
-
-    uow.commited = False
-    with pytest.raises(NotAvailableError):
-        accept_appointment(id2, uow)
-    assert not uow.commited
-
-
-def test_accept_when_wrong_id():
-    uow = FakeUnitOfWork()
-    since1 = datetime(2000, 1, 1, 1)
-    until1 = datetime(2000, 1, 1, 4)
-    app_returned_unaccepted1 = ask_appointment(since1, until1, uow)
-    id = app_returned_unaccepted1["id"]
-
-    uow.commited = False
-    with pytest.raises(DoesNotExistsError):
-        accept_appointment(id + 1, uow)
-    assert not uow.commited
-
-
-def test_list_returns_all():
-    uow = FakeUnitOfWork()
-    since1 = datetime(2000, 1, 1, 1)
-    until1 = datetime(2000, 1, 1, 4)
-    app1 = ask_appointment(since1, until1, uow)
-    since2 = datetime(2000, 1, 2, 1)
-    until2 = datetime(2000, 1, 2, 4)
-    app2 = ask_appointment(since2, until2, uow)
-    id2 = app2["id"]
-    app2_accepted = accept_appointment(id2, uow)
-    uow.commited = False
-    [app1_returned, app2_returned] = list_appointments(uow)
-    assert app1_returned == app1
-    assert app2_returned == app2_accepted
-    assert not uow.commited
 
 
 def test_create_client():
@@ -218,6 +136,8 @@ def test_create_service():
     assert user_stored["email"] == email
     assert user_stored["password"] == password
     assert user_stored["tags"] == tags
+    calendar_stored = uow.calendars.list().pop()
+    assert calendar_stored.owner == account_name
 
 
 def test_cannot_create_user_with_existing_account_name():
@@ -259,4 +179,460 @@ def test_cannot_get_unexisting_user():
     uow.commited = False
     with pytest.raises(DoesNotExistsError):
         get_user("john", uow)
+    assert not uow.commited
+
+
+def test_create_appoinment_when_free():
+    to_user = "bob"
+    email = "bob@dot.com"
+    password = "123"
+    tags = ["mechanic", "car"]
+
+    uow = FakeUnitOfWork()
+    create_service(to_user, email, password, tags, uow)
+
+    from_user = "john"
+    since = datetime(2000, 1, 1, 1)
+    until = datetime(2000, 1, 1, 2)
+    description = "mechanic needed"
+
+    uow.commited = False
+    app_returned = create_appointment(
+        to_user, from_user, since, until, description, uow
+    )
+
+    calendar_stored = uow.calendars.list().pop()
+    app_stored = calendar_stored.get_appointment(app_returned["id"]).to_dict()
+    assert app_returned["from_user"] == from_user
+    assert app_returned["since"] == since
+    assert app_returned["until"] == until
+    assert app_returned["description"] == description
+    assert not app_returned["accepted"]
+    assert app_stored == app_returned
+    assert uow.commited
+
+
+def test_accept_appointment_when_free():
+    to_user = "bob"
+    email = "bob@dot.com"
+    password = "123"
+    tags = ["mechanic", "car"]
+
+    uow = FakeUnitOfWork()
+    create_service(to_user, email, password, tags, uow)
+
+    from_user = "john"
+    since = datetime(2000, 1, 1, 1)
+    until = datetime(2000, 1, 1, 2)
+    description = "mechanic needed"
+
+    app_unaccepted = create_appointment(
+        to_user, from_user, since, until, description, uow
+    )
+
+    uow.commited = False
+    app_returned = accept_appointment(to_user, app_unaccepted["id"], uow)
+
+    calendar_stored = uow.calendars.list().pop()
+    app_stored = calendar_stored.get_appointment(app_returned["id"]).to_dict()
+    assert app_returned["from_user"] == from_user
+    assert app_returned["since"] == since
+    assert app_returned["until"] == until
+    assert app_returned["description"] == description
+    assert app_returned["accepted"]
+    assert app_stored == app_returned
+    assert uow.commited
+
+
+def test_ask_appoinment_cannot_create_when_occupied():
+    to_user = "bob"
+    email = "bob@dot.com"
+    password = "123"
+    tags = ["mechanic", "car"]
+
+    uow = FakeUnitOfWork()
+    create_service(to_user, email, password, tags, uow)
+
+    from_user = "john"
+    since = datetime(2000, 1, 1, 1)
+    until = datetime(2000, 1, 1, 2)
+    description = "mechanic needed"
+
+    app_unaccepted = create_appointment(
+        to_user, from_user, since, until, description, uow
+    )
+
+    accept_appointment(to_user, app_unaccepted["id"], uow)
+
+    from_user = "bob"
+    since = datetime(2000, 1, 1, 1, 30)
+    until = datetime(2000, 1, 1, 2)
+    description = "car mechanic needed"
+
+    uow.commited = False
+    with pytest.raises(NotAvailableError):
+        create_appointment(to_user, from_user, since, until, description, uow)
+    assert not uow.commited
+
+
+def test_cannot_accept_when_occupied():
+    to_user = "bob"
+    email = "bob@dot.com"
+    password = "123"
+    tags = ["mechanic", "car"]
+
+    uow = FakeUnitOfWork()
+    create_service(to_user, email, password, tags, uow)
+
+    from_user = "john"
+    since = datetime(2000, 1, 1, 1)
+    until = datetime(2000, 1, 1, 2)
+    description = "mechanic needed"
+
+    app_unaccepted1 = create_appointment(
+        to_user, from_user, since, until, description, uow
+    )
+
+    from_user = "bob"
+    since = datetime(2000, 1, 1, 1, 30)
+    until = datetime(2000, 1, 1, 2)
+    description = "car mechanic needed"
+
+    app_unaccepted2 = create_appointment(
+        to_user, from_user, since, until, description, uow
+    )
+
+    accept_appointment(to_user, app_unaccepted1["id"], uow)
+    uow.commited = False
+    with pytest.raises(DoesNotExistsError):
+        accept_appointment(to_user, app_unaccepted2["id"], uow)
+    assert not uow.commited
+
+
+def test_accept_when_wrong_id():
+    to_user = "bob"
+    email = "bob@dot.com"
+    password = "123"
+    tags = ["mechanic", "car"]
+
+    uow = FakeUnitOfWork()
+    create_service(to_user, email, password, tags, uow)
+
+    from_user = "john"
+    since = datetime(2000, 1, 1, 1)
+    until = datetime(2000, 1, 1, 2)
+    description = "mechanic needed"
+
+    app_unaccepted = create_appointment(
+        to_user, from_user, since, until, description, uow
+    )
+
+    uow.commited = False
+    wrong_id = randint(1, 10)
+    while wrong_id == app_unaccepted["id"]:
+        wrong_id = randint(1, 10)
+
+    uow.commited = False
+    with pytest.raises(DoesNotExistsError):
+        accept_appointment(to_user, wrong_id, uow)
+    assert not uow.commited
+
+
+def test_list_appointments_owned():
+    to_user = "bob"
+    email = "bob@dot.com"
+    password = "123"
+    tags = ["mechanic", "car"]
+
+    uow = FakeUnitOfWork()
+    create_service(to_user, email, password, tags, uow)
+
+    from_user = "john"
+    since = datetime(2000, 1, 1, 1)
+    until = datetime(2000, 1, 1, 2)
+    description = "mechanic needed"
+
+    app_unaccepted1 = create_appointment(
+        to_user, from_user, since, until, description, uow
+    )
+
+    from_user = "bob"
+    since = datetime(2000, 1, 1, 3, 30)
+    until = datetime(2000, 1, 1, 4)
+    description = "car mechanic needed"
+
+    app_unaccepted2 = create_appointment(
+        to_user, from_user, since, until, description, uow
+    )
+
+    app_accepted1 = accept_appointment(to_user, app_unaccepted1["id"], uow)
+
+    uow.commited = False
+    [app1_returned, app2_returned] = list_appointments_owned(to_user, uow)
+
+    assert app_accepted1 == app1_returned
+    assert app_unaccepted2 == app2_returned
+    assert not uow.commited
+
+
+def test_list_appointments_unowned():
+    to_user = "bob"
+    email = "bob@dot.com"
+    password = "123"
+    tags = ["mechanic", "car"]
+
+    uow = FakeUnitOfWork()
+    create_service(to_user, email, password, tags, uow)
+
+    from_user = "john"
+    since = datetime(2000, 1, 1, 1)
+    until = datetime(2000, 1, 1, 2)
+    description = "mechanic needed"
+
+    app_unaccepted1 = create_appointment(
+        to_user, from_user, since, until, description, uow
+    )
+
+    from_user = "bob"
+    since = datetime(2000, 1, 1, 3, 30)
+    until = datetime(2000, 1, 1, 4)
+    description = "car mechanic needed"
+
+    app_unaccepted2 = create_appointment(
+        to_user, from_user, since, until, description, uow
+    )
+
+    app_accepted1 = accept_appointment(to_user, app_unaccepted1["id"], uow)
+    app_masked1 = dict()
+    app_masked1["since"] = app_accepted1["since"]
+    app_masked1["until"] = app_accepted1["until"]
+    app_masked2 = dict()
+    app_masked2["since"] = app_unaccepted2["since"]
+    app_masked2["until"] = app_unaccepted2["until"]
+
+    uow.commited = False
+    [app1_returned, app2_returned] = list_appointments_unowned(to_user, uow)
+
+    assert app_masked1 == app1_returned
+    assert app_masked2 == app2_returned
+    assert not uow.commited
+
+
+def test_search_services_by_tag():
+    tags_searched = ["mechanic", "warsaw"]
+    uow = FakeUnitOfWork()
+    to_user1 = "bob"
+    email = "bob@dot.com"
+    password = "123"
+    tags = tags_searched + ["cars"]
+    u1 = create_service(to_user1, email, password, tags, uow)
+    to_user2 = "james"
+    email = "james@dot.com"
+    password = "123"
+    tags = ["doctor", "medicine"]
+    create_service(to_user2, email, password, tags, uow)
+    to_user3 = "katie"
+    email = "katie@dot.com"
+    password = "123"
+    tags = tags_searched + ["lodz"]
+    u2 = create_service(to_user3, email, password, tags, uow)
+    account_name = "john"
+    email = "john@dot.com"
+    password = "123"
+    create_client(account_name, email, password, uow)
+
+    u_masked1 = dict()
+    u_masked1["account_name"] = u1["account_name"]
+    u_masked1["tags"] = u1["tags"]
+    u_masked2 = dict()
+    u_masked2["account_name"] = u2["account_name"]
+    u_masked2["tags"] = u2["tags"]
+
+    uow.commited = False
+    found = search_services(tags_searched, uow)
+
+    assert found == [u_masked1, u_masked2]
+    assert not uow.commited
+
+
+def test_search_services_no_tag():
+    tags = ["mechanic", "warsaw"]
+    uow = FakeUnitOfWork()
+    to_user1 = "bob"
+    email = "bob@dot.com"
+    password = "123"
+    tags = tags + ["cars"]
+    u1 = create_service(to_user1, email, password, tags, uow)
+    to_user2 = "james"
+    email = "james@dot.com"
+    password = "123"
+    tags = ["doctor", "medicine"]
+    u2 = create_service(to_user2, email, password, tags, uow)
+    to_user3 = "katie"
+    email = "katie@dot.com"
+    password = "123"
+    tags = tags + ["lodz"]
+    u3 = create_service(to_user3, email, password, tags, uow)
+    account_name = "john"
+    email = "john@dot.com"
+    password = "123"
+    create_client(account_name, email, password, uow)
+
+    u_masked1 = dict()
+    u_masked1["account_name"] = u1["account_name"]
+    u_masked1["tags"] = u1["tags"]
+    u_masked2 = dict()
+    u_masked2["account_name"] = u2["account_name"]
+    u_masked2["tags"] = u2["tags"]
+    u_masked3 = dict()
+    u_masked3["account_name"] = u3["account_name"]
+    u_masked3["tags"] = u3["tags"]
+
+    uow.commited = False
+    found = search_services([], uow)
+
+    assert found == [u_masked1, u_masked2, u_masked3]
+    assert not uow.commited
+
+
+def test_search_services_by_tag_empty():
+    tags_searched = ["mechanic", "warsaw"]
+    uow = FakeUnitOfWork()
+    to_user1 = "bob"
+    email = "bob@dot.com"
+    password = "123"
+    tags = ["cars"]
+    create_service(to_user1, email, password, tags, uow)
+    to_user2 = "james"
+    email = "james@dot.com"
+    password = "123"
+    tags = ["doctor", "medicine"]
+    create_service(to_user2, email, password, tags, uow)
+    to_user3 = "katie"
+    email = "katie@dot.com"
+    password = "123"
+    tags = ["tags"]
+    create_service(to_user3, email, password, tags, uow)
+    account_name = "john"
+    email = "john@dot.com"
+    password = "123"
+    create_client(account_name, email, password, uow)
+    uow.commited = False
+    tags_searched = ["mechanic", "warsaw"]
+    found = search_services(tags_searched, uow)
+
+    assert found == []
+    assert not uow.commited
+
+
+def test_get_appointment_detail_existing():
+    to_user = "bob"
+    email = "bob@dot.com"
+    password = "123"
+    tags = ["mechanic", "car"]
+
+    uow = FakeUnitOfWork()
+    create_service(to_user, email, password, tags, uow)
+
+    from_user = "john"
+    since = datetime(2000, 1, 1, 1)
+    until = datetime(2000, 1, 1, 2)
+    description = "mechanic needed"
+
+    app_unaccepted1 = create_appointment(
+        to_user, from_user, since, until, description, uow
+    )
+
+    from_user = "bob"
+    since = datetime(2000, 1, 1, 3, 30)
+    until = datetime(2000, 1, 1, 4)
+    description = "car mechanic needed"
+
+    create_appointment(to_user, from_user, since, until, description, uow)
+
+    app_accepted1 = accept_appointment(to_user, app_unaccepted1["id"], uow)
+
+    uow.commited = False
+    app_returned = get_appointment(to_user, app_accepted1["id"], uow)
+
+    assert app_returned == app_accepted1
+    assert not uow.commited
+
+
+def test_get_appointment_detail_unexisting_service():
+    to_user = "bob"
+    email = "bob@dot.com"
+    password = "123"
+    tags = ["mechanic", "car"]
+
+    uow = FakeUnitOfWork()
+    create_service(to_user, email, password, tags, uow)
+
+    from_user = "john"
+    since = datetime(2000, 1, 1, 1)
+    until = datetime(2000, 1, 1, 2)
+    description = "mechanic needed"
+
+    app_unaccepted1 = create_appointment(
+        to_user, from_user, since, until, description, uow
+    )
+
+    from_user = "bob"
+    since = datetime(2000, 1, 1, 3, 30)
+    until = datetime(2000, 1, 1, 4)
+    description = "car mechanic needed"
+
+    create_appointment(to_user, from_user, since, until, description, uow)
+
+    app_accepted1 = accept_appointment(to_user, app_unaccepted1["id"], uow)
+    wrong_service_name = "dylan"
+    email = "dylan@dot.com"
+    password = "123"
+    create_client(wrong_service_name, email, password, uow)
+
+    uow.commited = False
+    with pytest.raises(DoesNotExistsError):
+        get_appointment(wrong_service_name, app_accepted1["id"], uow)
+
+    assert not uow.commited
+
+
+def test_get_appointment_detail_unexisting_app_id():
+    to_user = "bob"
+    email = "bob@dot.com"
+    password = "123"
+    tags = ["mechanic", "car"]
+
+    uow = FakeUnitOfWork()
+    create_service(to_user, email, password, tags, uow)
+
+    from_user = "john"
+    since = datetime(2000, 1, 1, 1)
+    until = datetime(2000, 1, 1, 2)
+    description = "mechanic needed"
+
+    app_unaccepted1 = create_appointment(
+        to_user, from_user, since, until, description, uow
+    )
+
+    from_user = "bob"
+    since = datetime(2000, 1, 1, 3, 30)
+    until = datetime(2000, 1, 1, 4)
+    description = "car mechanic needed"
+
+    app_unaccepted = create_appointment(
+        to_user, from_user, since, until, description, uow
+    )
+
+    app_accepted = accept_appointment(to_user, app_unaccepted1["id"], uow)
+
+    uow.commited = False
+    wrong_id = randint(1, 10)
+    while (wrong_id == app_accepted["id"]) or (
+        wrong_id == app_unaccepted["id"]
+    ):
+        wrong_id = randint(1, 10)
+    with pytest.raises(DoesNotExistsError):
+        get_appointment(to_user, wrong_id, uow)
+
     assert not uow.commited

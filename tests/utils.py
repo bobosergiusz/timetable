@@ -2,13 +2,43 @@ from datetime import datetime
 from typing import List
 
 
-def insert_appointment(
-    session, since: datetime, until: datetime, accepted: bool
-) -> None:
+def insert_calendar(session, owner: str):
     session.execute(
-        "INSERT INTO appointments (since, until, accepted) "
-        "VALUES (:since, :until, :accepted)",
-        {"since": since, "until": until, "accepted": accepted},
+        "INSERT INTO calendars (owner, id_count) " "VALUES (:owner, 0)",
+        {"owner": owner},
+    )
+    session.commit()
+
+
+def insert_appointment(
+    session,
+    owner: str,
+    from_user: str,
+    since: datetime,
+    until: datetime,
+    description: str,
+    accepted: bool,
+) -> None:
+    [[id]] = session.execute(
+        "SELECT IFNULL(max(id), 0) + 1 "
+        "FROM appointments "
+        "WHERE calendar_owner=:owner",
+        {"owner": owner},
+    )
+    session.execute(
+        "INSERT INTO appointments (calendar_owner, id, from_user, since, "
+        "until, description, accepted) "
+        "VALUES (:owner, :id, :from_user, :since, "
+        ":until, :description, :accepted)",
+        {
+            "owner": owner,
+            "id": id,
+            "from_user": from_user,
+            "since": since,
+            "until": until,
+            "description": description,
+            "accepted": accepted,
+        },
     )
     session.commit()
 

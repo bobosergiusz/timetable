@@ -14,16 +14,26 @@ from sqlalchemy.orm import mapper, relationship
 
 from timetable.domain.appointment import Appointment
 from timetable.domain.user import User, Client, Service
+from timetable.domain.calendar import Calendar
 
 metadata = MetaData()
 
+calendars = Table(
+    "calendars",
+    metadata,
+    Column("owner", ForeignKey("services.account_name"), primary_key=True),
+    Column("id_count", Integer),
+)
 
 appointments = Table(
     "appointments",
     metadata,
-    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("calendar_owner", ForeignKey("calendars.owner"), primary_key=True),
+    Column("id", Integer, primary_key=True),
+    Column("from_user", String, nullable=False),
     Column("until", DateTime, nullable=False),
     Column("since", DateTime, nullable=False),
+    Column("description", String, nullable=False),
     Column("accepted", Boolean, nullable=False),
 )
 
@@ -75,16 +85,24 @@ tags = Table(
 
 
 def start_mappers():
-    _ = mapper(Appointment, appointments)
-    _ = mapper(
+
+    mapper(
+        Calendar,
+        calendars,
+        properties={
+            "_appointments": relationship(Appointment),
+        },
+    )
+    mapper(Appointment, appointments)
+    mapper(
         User, users, polymorphic_on=users.c.type, polymorphic_identity="user"
     )
-    _ = mapper(Client, clients, inherits=User, polymorphic_identity="client")
-    _ = mapper(
+    mapper(Client, clients, inherits=User, polymorphic_identity="client")
+    mapper(
         Tag,
         tags,
     )
-    _ = mapper(
+    mapper(
         Service,
         services,
         inherits=User,
