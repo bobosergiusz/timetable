@@ -90,7 +90,9 @@ def start_mappers():
         Calendar,
         calendars,
         properties={
-            "_appointments": relationship(Appointment),
+            "_appointments": relationship(
+                Appointment, cascade="all, delete-orphan"
+            ),
         },
     )
     mapper(Appointment, appointments)

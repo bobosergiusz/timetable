@@ -47,7 +47,9 @@ def list_appointments_unowned(
 ) -> List[Dict[str, Any]]:
     with uow:
         c = uow.calendars.get(account_name)
-        apps = [_mask(a.to_dict()) for a in c.list_appointments()]
+        apps = [
+            _mask(a.to_dict()) for a in c.list_appointments() if a.accepted
+        ]
         return apps
 
 
