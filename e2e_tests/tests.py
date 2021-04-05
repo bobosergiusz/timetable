@@ -10,7 +10,7 @@ def get_api_url():
     return f"http://{host}:{port}"
 
 
-def create_client(account_name, password, email):
+def create_client(account_name, password, email, s):
     api_url = get_api_url()
     json = {
         "account_name": account_name,
@@ -18,11 +18,11 @@ def create_client(account_name, password, email):
         "email": email,
         "account_type": "client",
     }
-    resp = requests.post(f"{api_url}/user", json=json)
+    resp = s.post(f"{api_url}/user", json=json)
     return resp
 
 
-def create_service(account_name, password, email, tags):
+def create_service(account_name, password, email, tags, s):
     api_url = get_api_url()
 
     json = {
@@ -32,59 +32,80 @@ def create_service(account_name, password, email, tags):
         "account_type": "service",
         "tags": tags,
     }
-    resp = requests.post(f"{api_url}/user", json=json)
+    resp = s.post(f"{api_url}/user", json=json)
     assert resp
 
 
-def login(account_name, password):
+def login(account_name, password, s):
     api_url = get_api_url()
     json = {"account_name": account_name, "password": password}
-    resp = requests.post(f"{api_url}/login", json=json)
+    resp = s.post(f"{api_url}/login", json=json)
     return resp
 
 
-def create_appointment(to_user, since, until, description, access_token):
+def get_csfr_token(resp):
+    s = resp.headers["Set-Cookie"]
+    _, data = s.split("csrf_access_token=")
+    cookie, _ = data.split(";")
+    return cookie
+
+
+def logout(s):
+    api_url = get_api_url()
+    resp = s.post(f"{api_url}/logout")
+    return resp
+
+
+def create_appointment(to_user, since, until, description, csfr_token, s):
     api_url = get_api_url()
     json = {
         "since": since,
         "until": until,
         "description": description,
     }
-    headers = {"Authorization": f"Bearer {access_token}"}
+    headers = {
+        "X-CSRF-TOKEN": csfr_token,
+    }
 
-    resp = requests.post(
+    resp = s.post(
         f"{api_url}/service/{to_user}/appointment", json=json, headers=headers
     )
     return resp
 
 
-def get_appointment_detail(to_user, app_id, access_token):
+def get_appointment_detail(to_user, app_id, csfr_token, s):
     api_url = get_api_url()
-    headers = {"Authorization": f"Bearer {access_token}"}
+    headers = {
+        "X-CSRF-TOKEN": csfr_token,
+    }
 
-    resp = requests.get(
+    resp = s.get(
         f"{api_url}/service/{to_user}/appointment/{app_id}",
         headers=headers,
     )
     return resp
 
 
-def accept_appointment(to_user, app_id, access_token):
+def accept_appointment(to_user, app_id, csfr_token, s):
     api_url = get_api_url()
-    headers = {"Authorization": f"Bearer {access_token}"}
+    headers = {
+        "X-CSRF-TOKEN": csfr_token,
+    }
 
-    resp = requests.put(
+    resp = s.put(
         f"{api_url}/service/{to_user}/appointment/{app_id}",
         headers=headers,
     )
     return resp
 
 
-def get_appointments(to_user, access_token):
+def get_appointments(to_user, csfr_token, s):
     api_url = get_api_url()
-    headers = {"Authorization": f"Bearer {access_token}"}
+    headers = {
+        "X-CSRF-TOKEN": csfr_token,
+    }
 
-    resp = requests.get(
+    resp = s.get(
         f"{api_url}/service/{to_user}/appointment",
         headers=headers,
     )
@@ -95,7 +116,8 @@ def test_create_user_happy():
     account_name = "bob"
     password = "123"
     email = "bob@dot.com"
-    resp = create_client(account_name, password, email)
+    with requests.Session() as s:
+        resp = create_client(account_name, password, email, s)
     assert resp.status_code == 201
     u = resp.json()
     assert u["account_name"] == account_name
@@ -107,8 +129,9 @@ def test_create_user_unhappy():
     account_name = "john"
     password = "123"
     email = "john@dot.com"
-    create_client(account_name, password, email)
-    resp = create_client(account_name, password, email)
+    with requests.Session() as s:
+        create_client(account_name, password, email, s)
+        resp = create_client(account_name, password, email, s)
     assert resp.status_code == 400
 
 
@@ -116,9 +139,9 @@ def test_login_user_happy():
     account_name = "katie"
     password = "123"
     email = "katie@dot.com"
-    create_client(account_name, password, email)
-    resp = login(account_name, password)
-    assert resp.json()["access_token"]
+    with requests.Session() as s:
+        create_client(account_name, password, email, s)
+        resp = login(account_name, password, s)
     assert resp.status_code == 200
 
 
@@ -127,8 +150,9 @@ def test_login_user_unhappy():
     password = "123"
     email = "joe@dot.com"
     wrong_password = "456"
-    create_client(account_name, password, email)
-    resp = login(account_name, wrong_password)
+    with requests.Session() as s:
+        create_client(account_name, password, email, s)
+        resp = login(account_name, wrong_password, s)
     assert resp.status_code == 400
 
 
@@ -140,21 +164,24 @@ def test_list_services():
     password1 = "123"
     email1 = "doctor1@dot.com"
     tags1 = tags + ["warsaw"]
-    create_service(account_name1, password1, email1, tags1)
+    with requests.Session() as s:
+        create_service(account_name1, password1, email1, tags1, s)
 
     account_name2 = "doctor2"
     password2 = "123"
     email2 = "doctor2@dot.com"
     tags2 = tags + ["lodz"]
-    create_service(account_name2, password2, email2, tags2)
+    with requests.Session() as s:
+        create_service(account_name2, password2, email2, tags2, s)
 
     account_name3 = "mechanic"
     password3 = "123"
     email3 = "mechanic@dot.com"
     tags3 = ["car", "mechanic", "lodz"]
-    create_service(account_name3, password3, email3, tags3)
+    with requests.Session() as s:
+        create_service(account_name3, password3, email3, tags3, s)
 
-    resp = requests.get(f"{api_url}/service", params={"tags": ",".join(tags)})
+        resp = s.get(f"{api_url}/service", params={"tags": ",".join(tags)})
     assert resp.status_code == 200
     assert resp.json() == [
         {"account_name": account_name1, "tags": tags1},
@@ -174,22 +201,24 @@ def test_create_appointment_get_appointment_detail_happy():
     password_s = "123"
     email_s = "barber@dot.com"
     tags_s = ["barber", "warsaw"]
-    create_service(account_name_s, password_s, email_s, tags_s)
+    with requests.Session() as s:
+        create_service(account_name_s, password_s, email_s, tags_s, s)
 
     account_name_c = "sean"
     password_c = "345"
     email_c = "sean@dot.com"
-    create_client(account_name_c, password_c, email_c)
-
-    resp_login_c = login(account_name_c, password_c)
+    with requests.Session() as s:
+        create_client(account_name_c, password_c, email_c, s)
 
     since = datetime(2000, 1, 1, 1, 0).strftime("%Y-%m-%d %H:%M")
     until = datetime(2000, 1, 1, 2, 1).strftime("%Y-%m-%d %H:%M")
     description = "haircut"
-    access_token = resp_login_c.json()["access_token"]
-    resp_create = create_appointment(
-        account_name_s, since, until, description, access_token
-    )
+    with requests.Session() as s:
+        resp_login_c = login(account_name_c, password_c, s)
+        csfr_token_c = get_csfr_token(resp_login_c)
+        resp_create = create_appointment(
+            account_name_s, since, until, description, csfr_token_c, s
+        )
     app_created = resp_create.json()
     id_ = app_created["id"]
     role_model = {
@@ -203,9 +232,10 @@ def test_create_appointment_get_appointment_detail_happy():
     assert resp_create.json() == role_model
     assert resp_create.status_code == 201
 
-    resp_login_s = login(account_name_s, password_s)
-    access_token = resp_login_s.json()["access_token"]
-    resp_get = get_appointment_detail(account_name_s, id_, access_token)
+    with requests.Session() as s:
+        resp_login_s = login(account_name_s, password_s, s)
+        csfr_token_s = get_csfr_token(resp_login_s)
+        resp_get = get_appointment_detail(account_name_s, id_, csfr_token_s, s)
     assert resp_get.json() == role_model
     assert resp_get.status_code == 200
 
@@ -215,22 +245,24 @@ def test_create_appointment_unhappy():
     password_s = "123"
     email_s = "barber2@dot.com"
     tags_s = ["barber", "warsaw"]
-    create_service(account_name_s, password_s, email_s, tags_s)
+    with requests.Session() as s:
+        create_service(account_name_s, password_s, email_s, tags_s, s)
 
     account_name_c = "sean2"
     password_c = "345"
     email_c = "sean2@dot.com"
-    create_client(account_name_c, password_c, email_c)
+    with requests.Session() as s:
+        create_client(account_name_c, password_c, email_c, s)
 
-    resp_login_c = login(account_name_c, password_c)
-
-    since = datetime(2000, 1, 1, 2, 1).strftime("%Y-%m-%d %H:%M")
-    until = datetime(2000, 1, 1, 1, 0).strftime("%Y-%m-%d %H:%M")
-    description = "haircut"
-    access_token = resp_login_c.json()["access_token"]
-    resp_create = create_appointment(
-        account_name_s, since, until, description, access_token
-    )
+    with requests.Session() as s:
+        resp_login_c = login(account_name_c, password_c, s)
+        csfr_token_c = get_csfr_token(resp_login_c)
+        since = datetime(2000, 1, 1, 2, 1).strftime("%Y-%m-%d %H:%M")
+        until = datetime(2000, 1, 1, 1, 0).strftime("%Y-%m-%d %H:%M")
+        description = "haircut"
+        resp_create = create_appointment(
+            account_name_s, since, until, description, csfr_token_c, s
+        )
     assert resp_create.status_code == 400
 
 
@@ -239,27 +271,31 @@ def test_accept_appointment_happy():
     password_s = "123"
     email_s = "beauty_salon@dot.com"
     tags_s = ["beauty_salon", "warsaw"]
-    create_service(account_name_s, password_s, email_s, tags_s)
+    with requests.Session() as s:
+        create_service(account_name_s, password_s, email_s, tags_s, s)
 
     account_name_c = "matilda"
     password_c = "345"
     email_c = "matilda@dot.com"
-    create_client(account_name_c, password_c, email_c)
+    with requests.Session() as s:
+        create_client(account_name_c, password_c, email_c, s)
 
-    resp_login_c = login(account_name_c, password_c)
+    with requests.Session() as s:
+        resp_login_c = login(account_name_c, password_c, s)
 
-    since = datetime(2000, 1, 1, 1, 0).strftime("%Y-%m-%d %H:%M")
-    until = datetime(2000, 1, 1, 2, 1).strftime("%Y-%m-%d %H:%M")
-    description = "haircut"
-    access_token = resp_login_c.json()["access_token"]
-    resp_create = create_appointment(
-        account_name_s, since, until, description, access_token
-    )
+        since = datetime(2000, 1, 1, 1, 0).strftime("%Y-%m-%d %H:%M")
+        until = datetime(2000, 1, 1, 2, 1).strftime("%Y-%m-%d %H:%M")
+        description = "haircut"
+        csfr_token_c = get_csfr_token(resp_login_c)
+        resp_create = create_appointment(
+            account_name_s, since, until, description, csfr_token_c, s
+        )
     id_ = resp_create.json()["id"]
-    resp_login_s = login(account_name_s, password_s)
-    access_token = resp_login_s.json()["access_token"]
-    resp_accept = accept_appointment(account_name_s, id_, access_token)
-    resp_get = get_appointment_detail(account_name_s, id_, access_token)
+    with requests.Session() as s:
+        resp_login_s = login(account_name_s, password_s, s)
+        csfr_token_s = get_csfr_token(resp_login_s)
+        resp_accept = accept_appointment(account_name_s, id_, csfr_token_s, s)
+        resp_get = get_appointment_detail(account_name_s, id_, csfr_token_s, s)
     assert resp_accept.json()["accepted"]
     assert resp_accept.status_code == 200
     assert resp_get.json()["accepted"]
@@ -270,24 +306,27 @@ def test_accept_appointment_unhappy():
     password_s = "123"
     email_s = "hairdresser@dot.com"
     tags_s = ["hairdresser", "warsaw"]
-    create_service(account_name_s, password_s, email_s, tags_s)
+    with requests.Session() as s:
+        create_service(account_name_s, password_s, email_s, tags_s, s)
 
     account_name_c = "elizabeth"
     password_c = "345"
     email_c = "elizabeth@dot.com"
-    create_client(account_name_c, password_c, email_c)
+    with requests.Session() as s:
+        create_client(account_name_c, password_c, email_c, s)
 
-    resp_login_c = login(account_name_c, password_c)
+    with requests.Session() as s:
+        resp_login_c = login(account_name_c, password_c, s)
 
-    since = datetime(2000, 1, 1, 1, 0).strftime("%Y-%m-%d %H:%M")
-    until = datetime(2000, 1, 1, 2, 1).strftime("%Y-%m-%d %H:%M")
-    description = "haircut"
-    access_token = resp_login_c.json()["access_token"]
-    resp_create = create_appointment(
-        account_name_s, since, until, description, access_token
-    )
-    id_ = resp_create.json()["id"]
-    resp_accept = accept_appointment(account_name_s, id_, access_token)
+        since = datetime(2000, 1, 1, 1, 0).strftime("%Y-%m-%d %H:%M")
+        until = datetime(2000, 1, 1, 2, 1).strftime("%Y-%m-%d %H:%M")
+        description = "haircut"
+        csfr_token_c = get_csfr_token(resp_login_c)
+        resp_create = create_appointment(
+            account_name_s, since, until, description, csfr_token_c, s
+        )
+        id_ = resp_create.json()["id"]
+        resp_accept = accept_appointment(account_name_s, id_, csfr_token_c, s)
     assert resp_accept.status_code == 401
 
 
@@ -296,25 +335,30 @@ def test_get_appointment_own():
     password_s = "123"
     email_s = "hairdresser3@dot.com"
     tags_s = ["hairdresser", "warsaw"]
-    create_service(account_name_s, password_s, email_s, tags_s)
+    with requests.Session() as s:
+        create_service(account_name_s, password_s, email_s, tags_s, s)
 
     account_name_c = "elizabeth3"
     password_c = "345"
     email_c = "elizabeth3@dot.com"
-    create_client(account_name_c, password_c, email_c)
+    with requests.Session() as s:
+        create_client(account_name_c, password_c, email_c, s)
 
-    resp_login_c = login(account_name_c, password_c)
+    with requests.Session() as s:
+        resp_login_c = login(account_name_c, password_c, s)
 
-    since = datetime(2000, 1, 1, 1, 0).strftime("%Y-%m-%d %H:%M")
-    until = datetime(2000, 1, 1, 2, 1).strftime("%Y-%m-%d %H:%M")
-    description = "haircut"
-    access_token = resp_login_c.json()["access_token"]
-    resp_create = create_appointment(
-        account_name_s, since, until, description, access_token
-    )
-    resp_login_s = login(account_name_s, password_s)
-    access_token = resp_login_s.json()["access_token"]
-    resp_get = get_appointments(account_name_s, access_token)
+        since = datetime(2000, 1, 1, 1, 0).strftime("%Y-%m-%d %H:%M")
+        until = datetime(2000, 1, 1, 2, 1).strftime("%Y-%m-%d %H:%M")
+        description = "haircut"
+        csfr_token_c = get_csfr_token(resp_login_c)
+        resp_create = create_appointment(
+            account_name_s, since, until, description, csfr_token_c, s
+        )
+
+    with requests.Session() as s:
+        resp_login_s = login(account_name_s, password_s, s)
+        csfr_token_s = get_csfr_token(resp_login_s)
+        resp_get = get_appointments(account_name_s, csfr_token_s, s)
     assert resp_get.status_code == 200
     assert resp_get.json() == [resp_create.json()]
 
@@ -324,27 +368,33 @@ def test_get_appointment_unown():
     password_s = "123"
     email_s = "hairdresser4@dot.com"
     tags_s = ["sport", "warsaw"]
-    create_service(account_name_s, password_s, email_s, tags_s)
+    with requests.Session() as s:
+        create_service(account_name_s, password_s, email_s, tags_s, s)
 
     account_name_c = "elizabeth4"
     password_c = "345"
     email_c = "elizabeth4@dot.com"
-    create_client(account_name_c, password_c, email_c)
+    with requests.Session() as s:
+        create_client(account_name_c, password_c, email_c, s)
 
-    resp_login_c = login(account_name_c, password_c)
-
-    since = datetime(2000, 1, 1, 1, 0).strftime("%Y-%m-%d %H:%M")
-    until = datetime(2000, 1, 1, 2, 1).strftime("%Y-%m-%d %H:%M")
-    description = "haircut"
-    access_token_c = resp_login_c.json()["access_token"]
-    resp_create = create_appointment(
-        account_name_s, since, until, description, access_token_c
-    )
+    with requests.Session() as s:
+        resp_login_c = login(account_name_c, password_c, s)
+        since = datetime(2000, 1, 1, 1, 0).strftime("%Y-%m-%d %H:%M")
+        until = datetime(2000, 1, 1, 2, 1).strftime("%Y-%m-%d %H:%M")
+        description = "haircut"
+        csfr_token_c = get_csfr_token(resp_login_c)
+        resp_create = create_appointment(
+            account_name_s, since, until, description, csfr_token_c, s
+        )
     id_ = resp_create.json()["id"]
-    resp_login_s = login(account_name_s, password_s)
-    access_token_s = resp_login_s.json()["access_token"]
-    accept_appointment(account_name_s, id_, access_token_s)
-    resp_get = get_appointments(account_name_s, access_token_c)
+    with requests.Session() as s:
+        resp_login_s = login(account_name_s, password_s, s)
+        csfr_token_s = get_csfr_token(resp_login_s)
+        accept_appointment(account_name_s, id_, csfr_token_s, s)
+    with requests.Session() as s:
+        resp_login_c2 = login(account_name_c, password_c, s)
+        csfr_token_c2 = get_csfr_token(resp_login_c2)
+        resp_get = get_appointments(account_name_s, csfr_token_c2, s)
     expected = {"since": since, "until": until}
     assert resp_get.status_code == 200
     assert resp_get.json() == [expected]
@@ -355,27 +405,30 @@ def test_get_appointment_unhappy():
     password_s = "123"
     email_s = "music@dot.com"
     tags_s = ["music", "warsaw"]
-    create_service(account_name_s, password_s, email_s, tags_s)
+    with requests.Session() as s:
+        create_service(account_name_s, password_s, email_s, tags_s, s)
 
     account_name_c = "alan"
     password_c = "345"
     email_c = "alan@dot.com"
-    create_client(account_name_c, password_c, email_c)
+    with requests.Session() as s:
+        create_client(account_name_c, password_c, email_c, s)
 
-    resp_login_c = login(account_name_c, password_c)
+    with requests.Session() as s:
+        resp_login_c = login(account_name_c, password_c, s)
+        since = datetime(2000, 1, 1, 1, 0).strftime("%Y-%m-%d %H:%M")
+        until = datetime(2000, 1, 1, 2, 1).strftime("%Y-%m-%d %H:%M")
+        description = "lesson"
+        csfr_token_c = get_csfr_token(resp_login_c)
+        create_appointment(
+            account_name_s, since, until, description, csfr_token_c, s
+        )
 
-    since = datetime(2000, 1, 1, 1, 0).strftime("%Y-%m-%d %H:%M")
-    until = datetime(2000, 1, 1, 2, 1).strftime("%Y-%m-%d %H:%M")
-    description = "lesson"
-    access_token_c = resp_login_c.json()["access_token"]
-    create_appointment(
-        account_name_s, since, until, description, access_token_c
-    )
-
-    resp_login_s = login(account_name_s, password_s)
-    access_token_s = resp_login_s.json()["access_token"]
-    account_name_wrong = "wrong_name"
-    resp_get = get_appointments(account_name_wrong, access_token_s)
+    with requests.Session() as s:
+        resp_login_s = login(account_name_s, password_s, s)
+        csfr_token_s = get_csfr_token(resp_login_s)
+        account_name_wrong = "wrong_name"
+        resp_get = get_appointments(account_name_wrong, csfr_token_s, s)
     assert resp_get.status_code == 400
 
 
@@ -384,24 +437,67 @@ def test_get_appointment_detail_unhappy():
     password_s = "123"
     email_s = "boxing@dot.com"
     tags_s = ["sport", "warsaw"]
-    create_service(account_name_s, password_s, email_s, tags_s)
+    with requests.Session() as s:
+        create_service(account_name_s, password_s, email_s, tags_s, s)
 
     account_name_c = "persival"
     password_c = "345"
     email_c = "persival@dot.com"
-    create_client(account_name_c, password_c, email_c)
+    with requests.Session() as s:
+        create_client(account_name_c, password_c, email_c, s)
 
-    resp_login_c = login(account_name_c, password_c)
-
-    since = datetime(2000, 1, 1, 1, 0).strftime("%Y-%m-%d %H:%M")
-    until = datetime(2000, 1, 1, 2, 1).strftime("%Y-%m-%d %H:%M")
-    description = "sparing"
-    access_token_c = resp_login_c.json()["access_token"]
-    resp_create = create_appointment(
-        account_name_s, since, until, description, access_token_c
-    )
+    with requests.Session() as s:
+        resp_login_c = login(account_name_c, password_c, s)
+        since = datetime(2000, 1, 1, 1, 0).strftime("%Y-%m-%d %H:%M")
+        until = datetime(2000, 1, 1, 2, 1).strftime("%Y-%m-%d %H:%M")
+        description = "sparing"
+        csfr_token_c = get_csfr_token(resp_login_c)
+        resp_create = create_appointment(
+            account_name_s, since, until, description, csfr_token_c, s
+        )
     id_ = resp_create.json()["id"]
-    resp_login_s = login(account_name_s, password_s)
-    access_token_s = resp_login_s.json()["access_token"]
-    resp_get = get_appointment_detail(account_name_s, id_ + 1, access_token_s)
+    with requests.Session() as s:
+        resp_login_s = login(account_name_s, password_s, s)
+        csfr_token_s = get_csfr_token(resp_login_s)
+        resp_get = get_appointment_detail(
+            account_name_s, id_ + 1, csfr_token_s, s
+        )
     assert resp_get.status_code == 400
+
+
+def test_logout():
+    account_name_s = "soccer-training"
+    password_s = "123"
+    email_s = "soccer@dot.com"
+    tags_s = ["sport", "warsaw"]
+    with requests.Session() as s:
+        create_service(account_name_s, password_s, email_s, tags_s, s)
+
+    account_name_c = "ryan"
+    password_c = "345"
+    email_c = "ryan@dot.com"
+    with requests.Session() as s:
+        create_client(account_name_c, password_c, email_c, s)
+
+    with requests.Session() as s:
+        resp_login_c = login(account_name_c, password_c, s)
+        since = datetime(2000, 1, 1, 1, 0).strftime("%Y-%m-%d %H:%M")
+        until = datetime(2000, 1, 1, 2, 1).strftime("%Y-%m-%d %H:%M")
+        description = "dribbling-training"
+        csfr_token_c = get_csfr_token(resp_login_c)
+        resp_create = create_appointment(
+            account_name_s, since, until, description, csfr_token_c, s
+        )
+    id_ = resp_create.json()["id"]
+    with requests.Session() as s:
+        resp_login_s = login(account_name_s, password_s, s)
+        csfr_token_s = get_csfr_token(resp_login_s)
+        resp_get = get_appointment_detail(account_name_s, id_, csfr_token_s, s)
+        assert resp_get.status_code == 200
+        resp_logout = logout(s)
+        assert resp_get.status_code == 200
+        assert resp_logout.json() == {"msg": "logout successful"}
+        resp_get2 = get_appointment_detail(
+            account_name_s, id_, csfr_token_s, s
+        )
+        assert resp_get2.status_code == 401

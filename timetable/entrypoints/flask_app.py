@@ -8,6 +8,8 @@ from flask_jwt_extended import JWTManager
 from flask_jwt_extended import jwt_required
 from flask_jwt_extended import create_access_token
 from flask_jwt_extended import get_jwt_identity
+from flask_jwt_extended import set_access_cookies
+from flask_jwt_extended import unset_jwt_cookies
 
 
 from timetable.adapters.orm import start_mappers
@@ -30,6 +32,7 @@ from timetable.service_layer.unit_of_work import SqlUnitOfWork
 flask_app = Flask(__name__)
 jwt = JWTManager(flask_app)
 flask_app.config["JWT_SECRET_KEY"] = get_secret_key()
+flask_app.config["JWT_TOKEN_LOCATION"] = ["cookies"]
 
 
 engine = create_engine(get_database_uri())
@@ -192,5 +195,16 @@ def login():
             r = {"error": "wrong username or password"}, 400
         else:
             access_token = create_access_token(identity=user["account_name"])
-            r = {"access_token": access_token}, 200
+            js = jsonify(
+                {"msg": "login successful", "account_name": account_name}
+            )
+            set_access_cookies(js, access_token)
+            r = js, 200
     return r
+
+
+@flask_app.route("/logout", methods=["POST"])
+def logout():
+    js = jsonify({"msg": "logout successful"})
+    unset_jwt_cookies(js)
+    return js, 200
