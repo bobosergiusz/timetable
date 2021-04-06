@@ -7,6 +7,7 @@ from sqlalchemy import (
     String,
     MetaData,
     Table,
+    event,
 )
 from sqlalchemy.ext.associationproxy import association_proxy
 
@@ -112,3 +113,8 @@ def start_mappers():
         properties={"_tg": relationship(Tag)},
     )
     Service.tags = association_proxy("_tg", "tag")
+
+
+@event.listens_for(Calendar, "load")
+def receive_load(c, _):
+    c.events = []

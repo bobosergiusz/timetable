@@ -16,17 +16,17 @@ from timetable.adapters.orm import start_mappers
 from timetable.config import get_database_uri, get_secret_key
 from timetable.domain.exceptions import NotAvailableError, DoesNotExistsError
 
-from timetable.service_layer.services import (
-    accept_appointment,
-    create_appointment,
-    list_appointments_owned,
-    list_appointments_unowned,
-    create_client,
-    create_service,
-    search_services,
-    get_user,
-    get_appointment,
+from timetable.domain.command import (
+    CreateClient,
+    CreateService,
+    CreateAppointment,
+    AcceptAppointment,
+    GetUser,
+    GetAppointment,
+    ListAppointments,
+    SearchServices,
 )
+from timetable.service_layer.message_bus import MessageBus
 from timetable.service_layer.unit_of_work import SqlUnitOfWork
 
 flask_app = Flask(__name__)
@@ -39,6 +39,9 @@ engine = create_engine(get_database_uri())
 start_mappers()
 session_factory = sessionmaker(bind=engine)
 
+uow = SqlUnitOfWork(session_factory=session_factory)
+mb = MessageBus()
+
 
 @flask_app.route("/service", methods=["GET"])
 def get_services():
@@ -47,22 +50,19 @@ def get_services():
         tags = tags.split(",")
     else:
         tags = []
-    uow = SqlUnitOfWork(session_factory=session_factory)
-    ss = search_services(tags, uow)
+    c = SearchServices(tags)
+    [ss] = mb.handle(c, uow)
     return jsonify(ss), 200
 
 
 @flask_app.route("/service/<string:account_name>/appointment", methods=["GET"])
 @jwt_required(optional=True)
 def get_appointments(account_name):
-    uow = SqlUnitOfWork(session_factory=session_factory)
     current_identity = get_jwt_identity()
-    if current_identity == account_name:
-        fun = list_appointments_owned
-    else:
-        fun = list_appointments_unowned
+
+    c = ListAppointments(account_name, current_identity)
     try:
-        list_dict_app = fun(account_name, uow)
+        [list_dict_app] = mb.handle(c, uow)
     except DoesNotExistsError as e:
         r = {"error": str(e)}, 400
     else:
@@ -78,11 +78,11 @@ def get_appointments(account_name):
 )
 @jwt_required()
 def get_appointment_detail(account_name, app_id):
-    uow = SqlUnitOfWork(session_factory=session_factory)
     current_identity = get_jwt_identity()
     if current_identity == account_name:
+        c = GetAppointment(account_name, app_id)
         try:
-            a = get_appointment(account_name, app_id, uow)
+            [a] = mb.handle(c, uow)
         except DoesNotExistsError as e:
             r = {"error": str(e)}, 400
         else:
@@ -100,21 +100,19 @@ def get_appointment_detail(account_name, app_id):
 @jwt_required()
 def post_appointment(account_name):
     j = request.json
-    from_user = get_jwt_identity()
-    since = datetime.strptime(j["since"], "%Y-%m-%d %H:%M")
-    until = datetime.strptime(j["until"], "%Y-%m-%d %H:%M")
-    description = j["description"]
-    uow = SqlUnitOfWork(session_factory=session_factory)
+    c = CreateAppointment(
+        account_name,
+        get_jwt_identity(),
+        datetime.strptime(j["since"], "%Y-%m-%d %H:%M"),
+        datetime.strptime(j["until"], "%Y-%m-%d %H:%M"),
+        j["description"],
+    )
     try:
-        dict_app = create_appointment(
-            to_user=account_name,
-            from_user=from_user,
-            since=since,
-            until=until,
-            description=description,
-            uow=uow,
+        [dict_app] = mb.handle(
+            c,
+            uow,
         )
-    except (DoesNotExistsError, NotAvailableError, ValueError) as e:
+    except (DoesNotExistsError, ValueError) as e:
         j = {"error": str(e)}
         status_code = 400
     else:
@@ -130,12 +128,12 @@ def post_appointment(account_name):
 )
 @jwt_required()
 def put_appointment(account_name, app_id):
-    uow = SqlUnitOfWork(session_factory=session_factory)
     current_user = get_jwt_identity()
     if current_user == account_name:
+        c = AcceptAppointment(account_name, app_id)
         try:
-            dict_app = accept_appointment(account_name, app_id, uow)
-        except (DoesNotExistsError, NotAvailableError) as e:
+            [dict_app] = mb.handle(c, uow)
+        except DoesNotExistsError as e:
             j = {"error": str(e)}
             status_code = 400
         else:
@@ -157,22 +155,17 @@ def create_user():
     password = j["password"]
     # TODO: hash password
     account_type = j["account_type"]
-    uow = SqlUnitOfWork(session_factory=session_factory)
     if account_type == "client":
-        try:
-            u = create_client(account_name, email, password, uow)
-        except NotAvailableError as e:
-            r = {"error": str(e)}, 400
-        else:
-            r = u, 201
+        c = CreateClient(account_name, email, password)
     elif account_type == "service":
         tags = j["tags"]
-        try:
-            u = create_service(account_name, email, password, tags, uow)
-        except NotAvailableError as e:
-            r = {"error": str(e)}, 400
-        else:
-            r = u, 201
+        c = CreateService(account_name, email, password, tags)
+    try:
+        [u] = mb.handle(c, uow)
+    except NotAvailableError as e:
+        r = {"error": str(e)}, 400
+    else:
+        r = u, 201
     return r
 
 
@@ -184,10 +177,9 @@ def login():
     j = request.json
     account_name = j["account_name"]
     password = j["password"]
-    uow = SqlUnitOfWork(session_factory=session_factory)
-
+    c = GetUser(account_name)
     try:
-        user = get_user(account_name, uow)
+        [user] = mb.handle(c, uow)
     except DoesNotExistsError:
         r = {"error": "wrong username or password"}, 400
     else:

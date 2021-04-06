@@ -2,7 +2,7 @@ from datetime import datetime
 
 import pytest
 
-from timetable.adapters.repository import SqlCalendarRepository
+from timetable.adapters.repository import SqlTrackingCalendarRepository
 from timetable.domain.calendar import Calendar
 from timetable.domain.exceptions import DoesNotExistsError
 
@@ -21,7 +21,7 @@ def test_repository_can_add(Session):
         from_user=from_user, since=since, until=until, description=description
     )
 
-    repository = SqlCalendarRepository(session)
+    repository = SqlTrackingCalendarRepository(session)
     repository.add(c)
     session.commit()
 
@@ -51,6 +51,7 @@ def test_repository_can_add(Session):
     assert until_retrieved == a.until.strftime("%Y-%m-%d %H:%M:%S.%f")
     assert description_retrieved == description_retrieved
     assert accepted_retrieved == a.accepted
+    assert repository.seen == {c}
 
 
 def test_repository_can_get_by_existing_id(Session):
@@ -73,7 +74,7 @@ def test_repository_can_get_by_existing_id(Session):
         description,
         accepted,
     )
-    repository = SqlCalendarRepository(session)
+    repository = SqlTrackingCalendarRepository(session)
     c = repository.get(owner)
 
     assert c.owner == owner
@@ -84,11 +85,12 @@ def test_repository_can_get_by_existing_id(Session):
     assert a.until == until
     assert a.description == description
     assert a.accepted
+    assert repository.seen == {c}
 
 
 def test_repository_cannot_get_by_nonexisting_id(Session):
     session = Session()
-    repository = SqlCalendarRepository(session)
+    repository = SqlTrackingCalendarRepository(session)
     with pytest.raises(DoesNotExistsError):
         repository.get(3)
 
@@ -144,11 +146,12 @@ def test_repository_can_list(Session):
         accepted21,
     )
 
-    repository = SqlCalendarRepository(session)
+    repository = SqlTrackingCalendarRepository(session)
     [c1, c2] = repository.list()
 
     assert c1.owner == owner1
     assert c2.owner == owner2
+    assert repository.seen == {c1, c2}
 
     [a11, a12] = c1.list_appointments()
     [a21] = c2.list_appointments()

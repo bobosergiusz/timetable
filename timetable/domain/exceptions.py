@@ -1,6 +1,6 @@
 class NotAvailableError(BaseException):
-    """There is appointment during this time"""
+    """This entry is reserved already"""
 
 
 class DoesNotExistsError(BaseException):
-    """No such appointment"""
+    """No such entry"""

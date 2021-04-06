@@ -3,6 +3,7 @@ from typing import List
 
 from timetable.domain.appointment import Appointment
 from timetable.domain.exceptions import DoesNotExistsError, NotAvailableError
+from timetable.domain.event import Event
 
 
 class Calendar:
@@ -10,6 +11,7 @@ class Calendar:
         self.id_count = 0
         self._appointments: List[Appointment] = []
         self.owner = owner
+        self.events: List[Event] = []
 
     def create_appointment(
         self,
@@ -28,24 +30,31 @@ class Calendar:
         )
         for a2 in self._appointments:
             if a2.collide(a) and a2.accepted:
-                raise NotAvailableError
+                raise NotAvailableError("Time reserved already")
         self._appointments.append(a)
         self.id_count += 1
         return a
 
     def accept_appointment(self, a: Appointment) -> Appointment:
+        # list of valid appointments after this app is accepted
         updated_list: List[Appointment] = []
+        # flag if current app is owned by calendar
         owned = False
+        # flag if a collision with currently accepted exists
+        collision_exists = False
         for i, a2 in enumerate(self._appointments):
-            self._resolve_collision(a, a2, updated_list)
+            collision_exists |= self._resolve_collision(a, a2, updated_list)
             if a2 == a:
                 owned = True
         if not owned:
             raise DoesNotExistsError(
                 "This element does not belong to this calendar"
             )
-        self._appointments = updated_list
-        a.accepted = True
+        if collision_exists:
+            raise NotAvailableError("Time reserved already")
+        else:
+            self._appointments = updated_list
+            a.accepted = True
         return a
 
     def _resolve_collision(
@@ -53,15 +62,17 @@ class Calendar:
         a1: Appointment,
         a2: Appointment,
         verified_list: List[Appointment],
-    ):
+    ) -> bool:
+        rv = False
         if a2.collide(a1):
             if a2.accepted:
-                raise NotAvailableError
+                rv = True
         else:
             verified_list.append(a2)
+        return rv
 
     def __repr__(self) -> str:
-        return "Calendar()"
+        return f"Calendar({self.owner})"
 
     # TODO: These two methods may be better to be moved to other module (CQRS)
 

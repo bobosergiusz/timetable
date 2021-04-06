@@ -153,6 +153,7 @@ def test_cannot_create_appointment_when_collide_with_accepted():
     since = datetime(2020, 1, 1, 12, 30, 0)
     until = datetime(2020, 1, 1, 13, 30, 0)
     description = "need car repair"
+
     with pytest.raises(NotAvailableError):
         cal.create_appointment(
             from_user=from_user,
@@ -160,30 +161,6 @@ def test_cannot_create_appointment_when_collide_with_accepted():
             until=until,
             description=description,
         )
-
-
-def test_cannot_accept_appointment_when_collide_with_accepted():
-    cal = Calendar(owner="katie")
-
-    from_user = "john"
-    since = datetime(2020, 1, 1, 12, 0, 0)
-    until = datetime(2020, 1, 1, 13, 0, 0)
-    description = "need doctor"
-
-    a1 = cal.create_appointment(
-        from_user=from_user, since=since, until=until, description=description
-    )
-    from_user = "bob"
-    since = datetime(2020, 1, 1, 12, 30, 0)
-    until = datetime(2020, 1, 1, 13, 30, 0)
-    description = "need car repair"
-
-    a2 = cal.create_appointment(
-        from_user=from_user, since=since, until=until, description=description
-    )
-    a1 = cal.accept_appointment(a1)
-    with pytest.raises(NotAvailableError):
-        cal.accept_appointment(a2)
 
 
 def test_accept_appointment_deletes_colliding():

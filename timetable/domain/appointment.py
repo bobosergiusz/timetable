@@ -31,7 +31,10 @@ class Appointment:
         )
 
     def __repr__(self) -> str:
-        return f"Appointment({self.since}, {self.until})"
+        return (
+            f"Appointment({self.id}, {self.from_user}, {self.since},"
+            f" {self.until}, {self.accepted})"
+        )
 
     def to_dict(self) -> Dict[str, Any]:
         return {
