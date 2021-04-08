@@ -23,12 +23,6 @@ class AcceptAppointment(Command):
 
 
 @dataclass
-class ListAppointments(Command):
-    of_user: str
-    for_user: str
-
-
-@dataclass
 class CreateClient(Command):
     account_name: str
     email: str
@@ -40,20 +34,4 @@ class CreateService(Command):
     account_name: str
     email: str
     password: str
-    tags: List[str]
-
-
-@dataclass
-class GetUser(Command):
-    account_name: str
-
-
-@dataclass
-class GetAppointment(Command):
-    account_name: str
-    id: int
-
-
-@dataclass
-class SearchServices(Command):
     tags: List[str]
