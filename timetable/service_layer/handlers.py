@@ -1,7 +1,14 @@
+from typing import List, Dict, Type, Callable
+
 from timetable.domain.calendar import Calendar
 from timetable.domain.exceptions import DoesNotExistsError, NotAvailableError
 from timetable.domain.user import Client, Service
 from timetable.service_layer.unit_of_work import AbstractUnitOfWork
+
+
+from timetable.domain.event import Event
+from timetable.domain.command import Command
+
 
 from timetable.domain.command import (
     CreateClient,
@@ -58,3 +65,12 @@ def create_service(
             uow.commit()
         else:
             raise NotAvailableError
+
+
+EVENT_HANDLERS: Dict[Type[Event], List[Callable]] = {}
+COMMAND_HANDLERS: Dict[Type[Command], Callable] = {
+    CreateAppointment: create_appointment,
+    AcceptAppointment: accept_appointment,
+    CreateClient: create_client,
+    CreateService: create_service,
+}

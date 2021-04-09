@@ -1,77 +1,54 @@
-from typing import Dict, Union, Callable, List, Type, Any, TypeVar
+from typing import Union, List, Dict, Type, Callable
 import logging
 
 from timetable.domain.event import Event
-from timetable.domain.command import (
-    Command,
-    CreateAppointment,
-    AcceptAppointment,
-    CreateService,
-    CreateClient,
-)
+from timetable.domain.command import Command
 from timetable.service_layer.unit_of_work import AbstractUnitOfWork
-from timetable.service_layer.handlers import (
-    create_appointment,
-    accept_appointment,
-    create_client,
-    create_service,
-)
 
 Message = Union[Command, Event]
 
 logger = logging.getLogger(__name__)
 
 
-CommandT = TypeVar("CommandT", bound=Command)
-rv = Callable[
-    [CommandT, AbstractUnitOfWork],
-    Union[List[Dict[str, Any]], Dict[str, Any]],
-]
-
-
 class MessageBus:
-    EVENT_HANDLERS: Dict[
-        Type[Event], List[Callable[[Event, AbstractUnitOfWork], None]]
-    ] = {}
-    COMMAND_HANDLERS: Dict[Type[Command], rv] = {
-        CreateAppointment: create_appointment,
-        AcceptAppointment: accept_appointment,
-        CreateClient: create_client,
-        CreateService: create_service,
-    }
+    def __init__(
+        self,
+        events_handlers: Dict[Type[Event], List[Callable[[Event], None]]],
+        command_handlers: Dict[Type[Command], Callable[[Command], None]],
+        uow: AbstractUnitOfWork,
+    ):
+        self.events_handlers = events_handlers
+        self.command_handlers = command_handlers
+        self.uow = uow
 
-    def handle(self, message: Message, uow: AbstractUnitOfWork):
+    def handle(self, message: Message):
         queue = [message]
         while queue:
             message = queue.pop(0)
             if isinstance(message, Event):
-                self.handle_event(message, queue, uow)
+                self.handle_event(message, queue)
             elif isinstance(message, Command):
-                self.handle_command(message, queue, uow)
+                self.handle_command(message, queue)
             else:
                 raise Exception(f"{message} was not an Event or Command")
 
-    def handle_event(
-        self, event: Event, queue: List[Message], uow: AbstractUnitOfWork
-    ):
-        for handler in self.EVENT_HANDLERS[type(event)]:
+    def handle_event(self, event: Event, queue: List[Message]):
+        for handler in self.events_handlers[type(event)]:
             logger.debug(f"handling event {event} with handler {handler}")
             try:
-                handler(event, uow)
+                handler(event)
             except Exception:
                 logger.exception(f"Exception handling event {event}")
             else:
-                queue.extend(uow.collect_new_events())
+                queue.extend(self.uow.collect_new_events())
 
-    def handle_command(
-        self, command: Command, queue: List[Message], uow: AbstractUnitOfWork
-    ):
+    def handle_command(self, command: Command, queue: List[Message]):
         logger.debug(f"handling command {command}")
-        handler = self.COMMAND_HANDLERS[type(command)]
+        handler = self.command_handlers[type(command)]
         try:
-            handler(command, uow)
+            handler(command)
         except Exception:
             logger.exception(f"Exception handling command {command}")
             raise
         else:
-            queue.extend(uow.collect_new_events())
+            queue.extend(self.uow.collect_new_events())

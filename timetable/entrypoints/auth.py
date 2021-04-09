@@ -5,7 +5,7 @@ from flask_jwt_extended import unset_jwt_cookies
 
 from timetable.service_layer.views import get_user
 from timetable.domain.exceptions import DoesNotExistsError
-from timetable.entrypoints.bootstrap import uow
+from timetable.entrypoints.deps import mb
 
 auth = Blueprint("auth", __name__)
 
@@ -16,7 +16,7 @@ def login():
     account_name = j["account_name"]
     password = j["password"]
     try:
-        user = get_user(account_name, uow)
+        user = get_user(account_name, mb.uow)
     except DoesNotExistsError:
         r = {"error": "wrong username or password"}, 400
     else:

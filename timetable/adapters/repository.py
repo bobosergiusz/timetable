@@ -36,9 +36,7 @@ class SqlRepository(AbstractRepository, Generic[T]):
     def get(self, id: str) -> T:
         t = self.session.query(self.model).get(id)
         if t is None:
-            raise DoesNotExistsError(
-                f"{self.model} with this id does not exist"
-            )
+            raise DoesNotExistsError(f"{self.model} with {id} does not exist")
         return t
 
     def list(self) -> List[T]:

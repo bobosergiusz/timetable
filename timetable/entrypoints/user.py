@@ -6,7 +6,7 @@ from timetable.domain.command import (
 )
 from timetable.service_layer.views import get_user
 from timetable.domain.exceptions import NotAvailableError, DoesNotExistsError
-from timetable.entrypoints.bootstrap import mb, uow
+from timetable.entrypoints.deps import mb
 
 user = Blueprint("user", __name__)
 
@@ -25,7 +25,7 @@ def create_user():
         tags = j["tags"]
         c = CreateService(account_name, email, password, tags)
     try:
-        mb.handle(c, uow)
+        mb.handle(c)
     except NotAvailableError as e:
         r = {"error": str(e)}, 400
     else:
@@ -36,7 +36,7 @@ def create_user():
 @user.route("/user/<string:account_name>", methods=["GET"])
 def get_user_detail(account_name):
     try:
-        u = get_user(account_name, uow)
+        u = get_user(account_name, mb.uow)
     except DoesNotExistsError as e:
         r = {"error": str(e)}, 400
     else:

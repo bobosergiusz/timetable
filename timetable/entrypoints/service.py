@@ -15,7 +15,7 @@ from timetable.service_layer.views import (
 )
 
 from timetable.domain.exceptions import DoesNotExistsError
-from timetable.entrypoints.bootstrap import mb, uow
+from timetable.entrypoints.deps import mb
 
 
 service = Blueprint("service", __name__)
@@ -28,7 +28,7 @@ def get_services():
         tags = tags.split(",")
     else:
         tags = []
-    ss = search_services(tags, uow)
+    ss = search_services(tags, mb.uow)
     return jsonify(ss), 200
 
 
@@ -38,7 +38,9 @@ def get_appointments(account_name):
     current_identity = get_jwt_identity()
 
     try:
-        list_dict_app = list_appointments(account_name, current_identity, uow)
+        list_dict_app = list_appointments(
+            account_name, current_identity, mb.uow
+        )
     except DoesNotExistsError as e:
         r = {"error": str(e)}, 400
     else:
@@ -57,7 +59,7 @@ def get_appointment_detail(account_name, app_id):
     current_identity = get_jwt_identity()
     if current_identity == account_name:
         try:
-            dict_app = get_appointment(account_name, app_id, uow)
+            dict_app = get_appointment(account_name, app_id, mb.uow)
         except DoesNotExistsError as e:
             r = {"error": str(e)}, 400
         else:
@@ -81,7 +83,7 @@ def post_appointment(account_name):
         j["description"],
     )
     try:
-        mb.handle(c, uow)
+        mb.handle(c)
     except (DoesNotExistsError, ValueError) as e:
         r = {"error": str(e)}, 400
     else:
@@ -98,7 +100,7 @@ def put_appointment(account_name, app_id):
     if current_user == account_name:
         c = AcceptAppointment(account_name, app_id)
         try:
-            mb.handle(c, uow)
+            mb.handle(c)
         except DoesNotExistsError as e:
             r = {"error": str(e)}, 400
         else:

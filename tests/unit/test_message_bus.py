@@ -1,52 +1,61 @@
+from pytest import fixture
 from tests.fakes import FakeUnitOfWork
 
 from timetable.domain.event import Event
 from timetable.domain.calendar import Calendar
 from timetable.domain.command import Command
-from timetable.service_layer.message_bus import MessageBus
+from timetable.bootstrap import bootstrap
+
+
+@fixture
+def test_mb():
+    ev_s = []
+    co_s = []
+    mb = bootstrap(False, FakeUnitOfWork())
+    mb.events_handlers = {Event: [lambda e: ev_s.append(e)]}
+    mb.command_handlers = {Command: lambda c: co_s.append(c)}
+    mb.ev_s = ev_s
+    mb.co_s = co_s
+    return mb
+
+
+@fixture
+def test_mb2():
+    ev_s = []
+    co_s = []
+    mb = bootstrap(False, FakeUnitOfWork())
+
+    def handle_command(c):
+        co_s.append(c)
+        mb.uow.calendars.list()[0].events.append(Event())
+
+    mb.events_handlers = {Event: [lambda e: ev_s.append(e)]}
+    mb.command_handlers = {Command: handle_command}
+    mb.ev_s = ev_s
+    mb.co_s = co_s
+    return mb
 
 
 class TestMessageBus:
-    def test_message_bus_handles_event(self):
-        ev_s = []
-        co_s = []
-        m = MessageBus()
-        m.EVENT_HANDLERS = {Event: [lambda e, _: ev_s.append(e)]}
-        m.COMMAND_HANDLERS = {Command: lambda e, _: co_s.append(e)}
+    def test_message_bus_handles_event(self, test_mb):
         e = Event()
-        uow = FakeUnitOfWork()
-        m.handle(e, uow)
-        assert ev_s == [e]
-        assert co_s == []
+        print(test_mb.events_handlers)
+        test_mb.handle(e)
+        assert test_mb.ev_s == [e]
+        assert test_mb.co_s == []
 
-    def test_message_bus_handles_command(self):
-        ev_s = []
-        co_s = []
-        m = MessageBus()
-        m.EVENT_HANDLERS = {Event: [lambda e, _: ev_s.append(e)]}
-        m.COMMAND_HANDLERS = {Command: lambda e, _: co_s.append(e)}
+    def test_message_bus_handles_command(self, test_mb):
         c = Command()
-        uow = FakeUnitOfWork()
-        m.handle(c, uow)
-        assert ev_s == []
-        assert co_s == [c]
+        test_mb.handle(c)
+        assert test_mb.ev_s == []
+        assert test_mb.co_s == [c]
 
-    def test_message_bus_process_added_events(self):
+    def test_message_bus_process_added_events(self, test_mb2):
         cal = Calendar("bob")
-        uow = FakeUnitOfWork()
-        uow.calendars.add(cal)
-        ev_s = []
-        co_s = []
-        m = MessageBus()
+        test_mb2.uow.calendars.add(cal)
+
         c = Command()
-        e = Event()
-
-        def handle_event(e, uow):
-            ev_s.append(e)
-            uow.calendars.list()[0].events.append(c)
-
-        m.EVENT_HANDLERS = {Event: [handle_event]}
-        m.COMMAND_HANDLERS = {Command: lambda e, _: co_s.append(e)}
-        m.handle(e, uow)
-        assert ev_s == [e]
-        assert co_s == [c]
+        test_mb2.handle(c)
+        [o] = test_mb2.ev_s
+        assert isinstance(o, Event)
+        assert test_mb2.co_s == [c]
